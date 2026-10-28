@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/includes/config.php';
+require_once __DIR__ . '/includes/activity_log.php';
 
 $error = "";
 
@@ -14,6 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($user && password_verify($password, $user['password_hash'])) {
         $_SESSION['user_id'] = $user['user_id'];
         $_SESSION['user_name'] = $user['name'];
+        log_activity($pdo, (int) $user['user_id'], 'login', null);
         header("Location: dashboard.php");
         exit;
     } else {
@@ -23,13 +25,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 ?>
 <!DOCTYPE html>
 <html lang="en">
+<script>(function(){var t=localStorage.getItem("todolist-theme")||"light";document.documentElement.setAttribute("data-theme",t);})();</script>
 <head>
     <meta charset="UTF-8">
-    <title>Login — To-Do List</title>
-    <link rel="stylesheet" href="css/style.css">
+    <title>Login —ClariTask</title>
+    <style><?php include __DIR__ . "/css/style.css"; ?></style>
 </head>
 <body>
     <div class="container">
+        <a href="index.php" style="text-decoration:none; color:var(--navy); font-weight:bold; font-size:14px; display:inline-block; margin-bottom:16px;">← Back to home</a>
         <h1>Welcome back</h1>
 
         <?php if ($error): ?>

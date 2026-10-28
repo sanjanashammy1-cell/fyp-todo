@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/includes/config.php';
+require_once __DIR__ . '/includes/activity_log.php';
 
 $error = "";
 
@@ -25,9 +26,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 "INSERT INTO users (name, email, password_hash, phone_number) VALUES (?, ?, ?, ?)"
             );
             $insert->execute([$name, $email, $hash, $phone ?: null]);
+            $new_id = (int) $pdo->lastInsertId();
 
-            $_SESSION['user_id'] = $pdo->lastInsertId();
+            $_SESSION['user_id'] = $new_id;
             $_SESSION['user_name'] = $name;
+            log_activity($pdo, $new_id, 'register', "Account created");
             header("Location: dashboard.php");
             exit;
         }
@@ -36,13 +39,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 ?>
 <!DOCTYPE html>
 <html lang="en">
+<script>(function(){var t=localStorage.getItem("todolist-theme")||"light";document.documentElement.setAttribute("data-theme",t);})();</script>
 <head>
     <meta charset="UTF-8">
-    <title>Register — To-Do List</title>
-    <link rel="stylesheet" href="css/style.css">
+    <title>Register — ClariTask</title>
+    <style><?php include __DIR__ . "/css/style.css"; ?></style>
 </head>
 <body>
     <div class="container">
+        <a href="index.php" style="text-decoration:none; color:var(--navy); font-weight:bold; font-size:14px; display:inline-block; margin-bottom:16px;">← Back to home</a>
         <h1>Create your account</h1>
         <p class="muted">Takes under a minute.</p>
 

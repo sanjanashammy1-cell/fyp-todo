@@ -21,21 +21,22 @@ $stmt2 = $pdo->prepare(
 $stmt2->execute([$user_id]);
 $completed = $stmt2->fetchAll();
 
-// --- The recommender: scored fresh every load (the "adaptive" part) ---
-$ranked = rank_tasks($tasks);
-$top = $ranked[0] ?? null;
+// --- Recommender: this user's own weight profile, scored fresh every load ---
+$weights = get_user_weights($pdo, $user_id);
+$ranked = rank_tasks($tasks, $weights);
+$top3 = array_slice($ranked, 0, 3);
 
-// --- Reminders due right now (in-app banner + attempts SMS if phone saved) ---
+// Log the top pick to build a real historical record (Chapter 6 evidence)
+if (!empty($ranked)) {
+    log_recommendation($pdo, $user_id, $ranked[0]);
+}
+
 $due_reminders = get_due_reminders($pdo, $user_id);
-
-// --- Deadline clustering / overload warning ---
 $cluster_warning = detect_deadline_cluster($tasks);
 
-// --- Just-completed congratulations banner ---
 $just_completed = isset($_GET['completed']);
 $encouragement = $just_completed ? get_encouragement() : null;
 
-// --- Progress overview ---
 $total_tasks = count($tasks) + count($completed);
 $completion_rate = $total_tasks > 0 ? round((count($completed) / $total_tasks) * 100) : 0;
 
@@ -45,12 +46,36 @@ function importance_tag(int $weight): string {
     return 'Low';
 }
 
-// --- Consistency chart data ---
+// --- Search / filter / sort (applied to the display list only —
+// the recommender above always scores the FULL active task set,
+// so filtering the view never distorts the actual recommendation) ---
+$search = trim($_GET['search'] ?? '');
+$filter_module = trim($_GET['module'] ?? '');
+$sort_by = $_GET['sort'] ?? 'score';
+
+$all_modules = array_values(array_unique(array_filter(array_column($tasks, 'module_name'))));
+
+$visible = $ranked;
+if ($search !== '') {
+    $visible = array_filter($visible, fn($r) => stripos($r['task']['title'], $search) !== false);
+}
+if ($filter_module !== '') {
+    $visible = array_filter($visible, fn($r) => ($r['task']['module_name'] ?? '') === $filter_module);
+}
+$visible = array_values($visible);
+
+if ($sort_by === 'due_date') {
+    usort($visible, fn($a, $b) => strcmp($a['task']['due_date'], $b['task']['due_date']));
+} elseif ($sort_by === 'progress') {
+    usort($visible, fn($a, $b) => $b['task']['progress_percent'] <=> $a['task']['progress_percent']);
+}
+// 'score' needs no re-sort — $ranked is already score-ordered.
+
+
 $week = get_weekly_consistency($pdo, $user_id);
 $streak = get_current_streak($week);
 $max_count = max(1, max(array_column($week, 'count')));
 
-// --- Priority breakdown pie chart ---
 $priority_counts = ['High' => 0, 'Medium' => 0, 'Low' => 0];
 foreach ($tasks as $t) {
     $priority_counts[importance_tag((int) $t['assessment_weight'])]++;
@@ -69,28 +94,27 @@ foreach ($priority_counts as $label => $count) {
 }
 $conic_gradient = empty($stops) ? "#E6E6E6 0% 100%" : implode(', ', $stops);
 
-// --- Check if phone number is saved (for the SMS nudge) ---
 $phoneStmt = $pdo->prepare("SELECT phone_number FROM users WHERE user_id = ?");
 $phoneStmt->execute([$user_id]);
 $has_phone = (bool) $phoneStmt->fetchColumn();
+
+$active_page = 'dashboard';
 ?>
 <!DOCTYPE html>
 <html lang="en">
+<script>(function(){var t=localStorage.getItem("todolist-theme")||"light";document.documentElement.setAttribute("data-theme",t);})();</script>
 <head>
     <meta charset="UTF-8">
-    <title>Dashboard — To-Do List</title>
-    <link rel="stylesheet" href="css/style.css">
+    <title>Dashboard — ClariTask</title>
+    <style><?php include __DIR__ . "/css/style.css"; ?></style>
 </head>
 <body>
-    <div class="topbar">
-        <div class="brand">TO-DO LIST</div>
-        <div>
-            <span class="muted" style="color:#cfd8ea;">Hi, <?= htmlspecialchars($_SESSION['user_name']) ?></span>
-            <a href="logout.php">Logout</a>
-        </div>
-    </div>
+<?php include __DIR__ . '/includes/sidebar.php'; ?>
 
     <div class="container" style="max-width:780px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <h1 style="margin-bottom:0;">Good to see you, <?= htmlspecialchars($_SESSION['user_name']) ?> 👋</h1>
+        </div>
 
         <?php if ($just_completed): ?>
             <div class="congrats-banner">
@@ -112,19 +136,21 @@ $has_phone = (bool) $phoneStmt->fetchColumn();
 
         <?php if ($cluster_warning): ?>
             <div class="error" style="background:#FCE9E4; color:#A6431F;">
-                ⚠️ <?= $cluster_warning /* already escaped inside detect_deadline_cluster */ ?>
+                ⚠️ <?= $cluster_warning ?>
             </div>
         <?php endif; ?>
 
         <?php if (!$has_phone): ?>
             <div class="sms-nudge">
-                💡 Want deadline reminders by text too? <a href="edit_profile.php">Add your phone number</a>.
+                💡 Want deadline reminders by text too? <a href="settings.php">Add your phone number</a>.
             </div>
         <?php endif; ?>
 
         <div style="display:flex; justify-content:space-between; align-items:center;">
             <h1>Your tasks</h1>
-            <a href="add_task.php" class="btn">+ Add Task</a>
+            <div>
+                <a href="add_task.php" class="btn">+ Add Task</a>
+            </div>
         </div>
 
         <?php if ($total_tasks > 0): ?>
@@ -186,31 +212,68 @@ $has_phone = (bool) $phoneStmt->fetchColumn();
             </div>
         </div>
 
-        <?php if ($top): ?>
+        <?php if (!empty($top3)): ?>
         <div class="suggested-panel">
-            <div class="label">Suggested next task</div>
-            <div class="task-title">
-                <?= htmlspecialchars($top['task']['title']) ?>
-                <?php if (!empty($top['task']['module_name'])): ?>
-                    <span class="muted" style="font-weight:normal;">&mdash; <?= htmlspecialchars($top['task']['module_name']) ?></span>
-                <?php endif; ?>
-            </div>
-            <div class="muted" style="margin-top:6px;"><?= htmlspecialchars($top['explanation']) ?></div>
-            <div class="muted" style="margin-top:6px; font-size:11px;">
-                Priority score: <?= round($top['scores']['total'] * 100) ?>/100
-                (urgency <?= round($top['scores']['urgency']*100) ?>%,
-                grade weight <?= round($top['scores']['weight_score']*100) ?>%,
-                workload <?= round($top['scores']['workload_score']*100) ?>%,
-                remaining <?= round($top['scores']['progress_gap']*100) ?>%)
-            </div>
+            <div class="label">Today's Focus — top <?= count($top3) ?> recommended</div>
+            <?php foreach ($top3 as $i => $r): ?>
+                <div style="<?= $i > 0 ? 'margin-top:14px; padding-top:14px; border-top:1px solid rgba(14,124,123,0.2);' : 'margin-top:6px;' ?>">
+                    <div class="task-title" style="font-size: <?= $i === 0 ? '17px' : '14px' ?>;">
+                        #<?= $i + 1 ?> <?= htmlspecialchars($r['task']['title']) ?>
+                        <?php if (!empty($r['task']['module_name'])): ?>
+                            <span class="muted" style="font-weight:normal;">&mdash; <?= htmlspecialchars($r['task']['module_name']) ?></span>
+                        <?php endif; ?>
+                    </div>
+                    <div class="muted" style="margin-top:4px; font-size: <?= $i === 0 ? '13px' : '12px' ?>;"><?= htmlspecialchars($r['explanation']) ?></div>
+                    <?php if ($i === 0): ?>
+                    <div class="muted" style="margin-top:6px; font-size:11px;">
+                        Priority score: <?= round($r['scores']['total'] * 100) ?>/100
+                        &middot; urgency <?= round($r['scores']['urgency']*100) ?>%
+                        &middot; grade weight <?= round($r['scores']['weight_score']*100) ?>%
+                        &middot; workload <?= round($r['scores']['workload_score']*100) ?>%
+                        &middot; remaining <?= round($r['scores']['progress_gap']*100) ?>%
+                    </div>
+                    <div class="factor-bars">
+                        <div class="factor-bar-row"><span>Urgency</span><div class="factor-bar-track"><div class="factor-bar-fill" style="width:<?= round($r['scores']['urgency']*100) ?>%; background:#E5503F;"></div></div></div>
+                        <div class="factor-bar-row"><span>Grade weight</span><div class="factor-bar-track"><div class="factor-bar-fill" style="width:<?= round($r['scores']['weight_score']*100) ?>%; background:#E5A64B;"></div></div></div>
+                        <div class="factor-bar-row"><span>Workload</span><div class="factor-bar-track"><div class="factor-bar-fill" style="width:<?= round($r['scores']['workload_score']*100) ?>%; background:#0E7C7B;"></div></div></div>
+                        <div class="factor-bar-row"><span>Remaining</span><div class="factor-bar-track"><div class="factor-bar-fill" style="width:<?= round($r['scores']['progress_gap']*100) ?>%; background:#1F3864;"></div></div></div>
+                    </div>
+                    <?php else: ?>
+                    <div class="muted" style="font-size:10px;">Score <?= round($r['scores']['total'] * 100) ?>/100</div>
+                    <?php endif; ?>
+                </div>
+            <?php endforeach; ?>
         </div>
         <?php endif; ?>
 
         <?php if (empty($tasks)): ?>
             <p class="muted">No active tasks yet — add your first one above.</p>
+        <?php else: ?>
+        <form method="GET" class="filter-bar">
+            <input type="text" name="search" placeholder="Search tasks…" value="<?= htmlspecialchars($search) ?>">
+            <select name="module">
+                <option value="">All modules</option>
+                <?php foreach ($all_modules as $m): ?>
+                    <option value="<?= htmlspecialchars($m) ?>" <?= $filter_module === $m ? 'selected' : '' ?>><?= htmlspecialchars($m) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <select name="sort">
+                <option value="score" <?= $sort_by === 'score' ? 'selected' : '' ?>>Sort: Priority score</option>
+                <option value="due_date" <?= $sort_by === 'due_date' ? 'selected' : '' ?>>Sort: Due date</option>
+                <option value="progress" <?= $sort_by === 'progress' ? 'selected' : '' ?>>Sort: Progress</option>
+            </select>
+            <button type="submit" class="btn btn-secondary" style="margin-top:0;">Apply</button>
+            <?php if ($search !== '' || $filter_module !== '' || $sort_by !== 'score'): ?>
+                <a href="dashboard.php" class="btn btn-secondary" style="margin-top:0;">Clear</a>
+            <?php endif; ?>
+        </form>
+
+        <?php if (empty($visible)): ?>
+            <p class="muted">No tasks match your search/filter.</p>
+        <?php endif; ?>
         <?php endif; ?>
 
-        <?php foreach ($ranked as $r): $t = $r['task']; $tag = importance_tag((int)$t['assessment_weight']); ?>
+        <?php foreach ($visible as $r): $t = $r['task']; $tag = importance_tag((int)$t['assessment_weight']); ?>
             <div class="task-row">
                 <div>
                     <strong><?= htmlspecialchars($t['title']) ?></strong>
@@ -228,6 +291,7 @@ $has_phone = (bool) $phoneStmt->fetchColumn();
                 <div class="task-actions">
                     <a href="complete_task.php?id=<?= $t['task_id'] ?>">Mark complete</a>
                     <a href="edit_task.php?id=<?= $t['task_id'] ?>">Edit</a>
+                    <a href="assistant.php?task=<?= $t['task_id'] ?>">🤖 Ask AI</a>
                     <a href="delete_task.php?id=<?= $t['task_id'] ?>" class="delete" onclick="return confirm('Delete this task?');">Delete</a>
                 </div>
             </div>
@@ -248,5 +312,18 @@ $has_phone = (bool) $phoneStmt->fetchColumn();
             <?php endforeach; ?>
         <?php endif; ?>
     </div>
+<!-- AI Study Assistant: floating button + slide-out chat panel -->
+<button type="button" class="ai-fab" onclick="document.getElementById('ai-panel').classList.add('open')">🤖 Study Assistant</button>
+<div class="ai-panel" id="ai-panel">
+    <div class="ai-panel-header">
+        <h2>🤖 Study Assistant</h2>
+        <button type="button" class="ai-panel-close" aria-label="Close" onclick="document.getElementById('ai-panel').classList.remove('open')">&times;</button>
+    </div>
+    <?php $chat_tasks = $tasks; $chat_selected = $ranked[0]['task']['task_id'] ?? null; ?>
+    <?php include __DIR__ . '/includes/chat_widget.php'; ?>
+    <a href="assistant.php" class="ai-panel-full">Open full-page assistant &rarr;</a>
+</div>
+
+<?php include __DIR__ . '/includes/sidebar_end.php'; ?>
 </body>
 </html>

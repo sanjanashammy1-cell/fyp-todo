@@ -8,15 +8,16 @@ if (isset($_SESSION['user_id'])) {
 ?>
 <!DOCTYPE html>
 <html lang="en">
+<script>(function(){var t=localStorage.getItem("todolist-theme")||"light";document.documentElement.setAttribute("data-theme",t);})();</script>
 <head>
     <meta charset="UTF-8">
-    <title>To-Do List — Manage deadlines that explain themselves</title>
-    <link rel="stylesheet" href="css/style.css">
+    <title>ClariTask — Every task, explained. Know what matters, and why.</title>
+    <style><?php include __DIR__ . "/css/style.css"; ?></style>
 </head>
 <body>
     <div class="hero">
-        <h1>Stop guessing what to work on next</h1>
-        <p>A to-do list built for overlapping module deadlines — with an explainable recommender, SMS reminders, and overload warnings, all tailored for busy students.</p>
+         <h1>ClariTask</h1> 
+         <p class="hero-motto">Every task, explained. Know what matters, and why.</p> <p>A ClariTask built for overlapping module deadlines — with an explainable recommender, SMS reminders, and overload warnings, tuned to how you actually work.</p>
         <a href="register.php" class="btn-accent">Get started</a>
         <a href="login.php" class="btn-outline">Log in</a>
 
@@ -42,12 +43,12 @@ if (isset($_SESSION['user_id'])) {
         <div class="feature-card">
             <div class="icon">📱</div>
             <h3>SMS + in-app reminders</h3>
-            <p>Real text messages before deadlines, because email gets missed but a text doesn't.</p>
+            <p>Real text messages before deadlines, with timing and channel fully under your control.</p>
         </div>
         <div class="feature-card">
             <div class="icon">🎯</div>
-            <h3>Explainable recommendations</h3>
-            <p>Scored on deadline proximity, grade weighting, workload, and progress — and it tells you why.</p>
+            <h3>Explainable, tunable recommendations</h3>
+            <p>Scored on deadline proximity, grade weighting, workload, and progress — with weights you can adjust.</p>
         </div>
         <div class="feature-card">
             <div class="icon">⚠️</div>
@@ -59,6 +60,15 @@ if (isset($_SESSION['user_id'])) {
             <h3>Track your consistency</h3>
             <p>See your completion streak and weekly activity at a glance.</p>
         </div>
+        <div class="feature-card">
+            <div class="icon">🤖</div>
+            <h3>AI study assistant</h3>
+            <p>Ask how to start a task and get a realistic day-by-day plan based on its deadline, workload and progress.</p>
+        </div>
     </div>
+
+    <footer style="text-align:center; padding:24px; margin-top:20px; color:var(--grey); font-size:12.5px;">
+     &copy; <?= date('Y') ?> ClariTask — final year thesis project &middot; <a href="privacy.php" style="color:var(--grey);">Privacy Notice</a>
+    </footer>
 </body>
 </html>

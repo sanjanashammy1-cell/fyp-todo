@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/activity_log.php';
 require_login();
 
 $user_id = current_user_id();
@@ -38,6 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
              WHERE task_id = ? AND user_id = ?"
         );
         $update->execute([$title, $module_name ?: null, $due_date, $assessment_weight, $estimated_hours, $progress_percent, $task_id, $user_id]);
+        log_activity($pdo, $user_id, 'task_edited', $title);
         header("Location: dashboard.php");
         exit;
     }
@@ -45,10 +47,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 ?>
 <!DOCTYPE html>
 <html lang="en">
+<script>(function(){var t=localStorage.getItem("todolist-theme")||"light";document.documentElement.setAttribute("data-theme",t);})();</script>
 <head>
     <meta charset="UTF-8">
-    <title>Edit Task — To-Do List</title>
-    <link rel="stylesheet" href="css/style.css">
+    <title>Edit Task — ClariTask</title>
+    <style><?php include __DIR__ . "/css/style.css"; ?></style>
 </head>
 <body>
     <div class="container">

@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/reminders.php';
+require_once __DIR__ . '/includes/activity_log.php';
 require_login();
 
 $error = "";
@@ -30,8 +31,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             current_user_id(), $title, $module_name ?: null, $due_date,
             $assessment_weight, $estimated_hours, $progress_percent
         ]);
+        $new_task_id = (int) $pdo->lastInsertId();
 
-        schedule_reminders($pdo, (int) $pdo->lastInsertId(), $due_date);
+        schedule_reminders($pdo, $new_task_id, $due_date, current_user_id());
+        log_activity($pdo, current_user_id(), 'task_added', $title);
 
         header("Location: dashboard.php");
         exit;
@@ -40,10 +43,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 ?>
 <!DOCTYPE html>
 <html lang="en">
+<script>(function(){var t=localStorage.getItem("todolist-theme")||"light";document.documentElement.setAttribute("data-theme",t);})();</script>
 <head>
     <meta charset="UTF-8">
-    <title>Add Task — To-Do List</title>
-    <link rel="stylesheet" href="css/style.css">
+    <title>Add Task — ClariTask</title>
+    <style><?php include __DIR__ . "/css/style.css"; ?></style>
 </head>
 <body>
     <div class="container">
