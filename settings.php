@@ -19,6 +19,30 @@ $prefs = get_notification_preferences($pdo, $user_id);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $form = $_POST['form'] ?? '';
 
+    // Delete account: the user must type their password to confirm.
+    if ($form === 'delete_account') {
+        $confirm_password = $_POST['confirm_password'] ?? '';
+        $stmt = $pdo->prepare("SELECT password_hash FROM users WHERE user_id = ?");
+        $stmt->execute([$user_id]);
+        $row = $stmt->fetch();
+
+        if ($row && password_verify($confirm_password, $row['password_hash'])) {
+            $pdo->beginTransaction();
+            // chat_messages has no foreign key, so delete it first by hand.
+            $pdo->prepare("DELETE FROM chat_messages WHERE user_id = ?")->execute([$user_id]);
+            // ON DELETE CASCADE removes tasks, reminders, weights, preferences and logs.
+            $pdo->prepare("DELETE FROM users WHERE user_id = ?")->execute([$user_id]);
+            $pdo->commit();
+
+            $_SESSION = [];
+            session_destroy();
+            header("Location: login.php?deleted=1");
+            exit;
+        } else {
+            $error = "Password is not correct. Your account was not deleted.";
+        }
+    }
+
     if ($form === 'phone') {
         $phone = trim($_POST['phone_number'] ?? '');
         $pdo->prepare("UPDATE users SET phone_number = ? WHERE user_id = ?")->execute([$phone ?: null, $user_id]);
@@ -110,6 +134,15 @@ $active_page = 'settings';
             <label>Progress (%)</label>
             <input type="number" name="w_progress" min="0" max="100" value="<?= $weights['progress'] ?>">
             <button type="submit" class="btn">Save weights</button>
+        </form>
+
+        <h2 style="font-size:16px; color:#B00020; margin-top:32px;">Delete Account</h2>
+        <p style="font-size:14px;">This deletes your account and all your data (tasks, reminders, settings and chat history). This cannot be undone.</p>
+        <form method="POST" onsubmit="return confirm('Are you sure? Your account and all your data will be deleted forever.');">
+            <input type="hidden" name="form" value="delete_account">
+            <label>Type your password to confirm</label>
+            <input type="password" name="confirm_password" required>
+            <button type="submit" class="btn" style="background:#B00020;">Delete my account</button>
         </form>
     </div>
 <?php include __DIR__ . '/includes/sidebar_end.php'; ?>

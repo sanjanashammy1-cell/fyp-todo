@@ -36,6 +36,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <a href="index.php" style="text-decoration:none; color:var(--navy); font-weight:bold; font-size:14px; display:inline-block; margin-bottom:16px;">← Back to home</a>
         <h1>Welcome back</h1>
 
+        <?php if (isset($_GET['deleted'])): ?>
+            <div class="success">Your account and all your data have been deleted.</div>
+        <?php endif; ?>
         <?php if ($error): ?>
             <div class="error"><?= htmlspecialchars($error) ?></div>
         <?php endif; ?>

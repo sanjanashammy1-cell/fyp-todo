@@ -70,7 +70,7 @@ $chat_selected = $chat_selected ?? null;
         const thinking = addMessage('Thinking…', 'assistant thinking');
         sendBtn.disabled = true;
         try {
-            const response = await fetch('ai_chat.php', {
+            const response = await fetch('study_help.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message: question, task_id: taskSelect.value })

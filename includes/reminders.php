@@ -12,6 +12,7 @@
 // =========================================================
 
 require_once __DIR__ . '/sms.php';
+date_default_timezone_set('Europe/Copenhagen'); // match the MySQL clock
 
 const DEFAULT_PREFS = [
     'sms_enabled' => true,
@@ -60,9 +61,16 @@ function schedule_reminders(PDO $pdo, int $task_id, string $due_date, int $user_
     ];
 
     $insert = $pdo->prepare("INSERT INTO reminders (task_id, remind_at) VALUES (?, ?)");
+    $catch_up_added = false;
     foreach ($candidates as $remind_at) {
         if ($remind_at > $now) {
             $insert->execute([$task_id, $remind_at->format('Y-m-d H:i:s')]);
+        } elseif (!$catch_up_added && $due > $now) {
+            // The reminder time has already passed, but the deadline has not.
+            // Remind the student straight away instead of skipping it
+            // (for example, a task added the day before it is due).
+            $insert->execute([$task_id, $now->format('Y-m-d H:i:s')]);
+            $catch_up_added = true;
         }
     }
 }
@@ -79,9 +87,11 @@ function get_due_reminders(PDO $pdo, int $user_id): array {
          FROM reminders r
          JOIN tasks t ON t.task_id = r.task_id
          WHERE t.user_id = ? AND t.status = 'active'
-           AND r.remind_at <= NOW() AND r.sent = 0"
+           AND r.remind_at <= ? AND r.sent = 0"
     );
-    $stmt->execute([$user_id]);
+    // Use PHP's Copenhagen time, not the database clock, so the
+    // online server's time zone does not delay reminders.
+    $stmt->execute([$user_id, date('Y-m-d H:i:s')]);
     $due = $stmt->fetchAll();
 
     if (empty($due)) {
@@ -100,7 +110,8 @@ function get_due_reminders(PDO $pdo, int $user_id): array {
     foreach ($due as $r) {
         $markShown->execute([$r['reminder_id']]);
 
-        if ($prefs['sms_enabled'] && !empty($phone)) {
+        // Only send the SMS if the background job has not sent it already.
+        if ($prefs['sms_enabled'] && !empty($phone) && (int) $r['sms_sent'] === 0) {
             $sent = send_sms($phone, build_reminder_message($r));
             if ($sent) {
                 $markSms->execute([$r['reminder_id']]);
@@ -109,4 +120,36 @@ function get_due_reminders(PDO $pdo, int $user_id): array {
     }
 
     return $due;
+}
+
+/**
+ * Background job: sends SMS for every due reminder of every student,
+ * even if the student has not opened the dashboard. It does NOT mark
+ * the reminder as shown in-app, so the student still sees the banner
+ * the next time they open ClariTask. Returns how many SMS were sent.
+ */
+function send_due_sms_for_all_users(PDO $pdo): int {
+    $stmt = $pdo->prepare(
+        "SELECT r.reminder_id, t.title, t.module_name, t.due_date, t.user_id, u.phone_number
+         FROM reminders r
+         JOIN tasks t ON t.task_id = r.task_id
+         JOIN users u ON u.user_id = t.user_id
+         WHERE t.status = 'active' AND r.remind_at <= ? AND r.sms_sent = 0
+           AND t.due_date >= ?
+           AND u.phone_number IS NOT NULL AND u.phone_number <> ''"
+    );
+    $stmt->execute([date('Y-m-d H:i:s'), date('Y-m-d')]);
+    $markSms = $pdo->prepare("UPDATE reminders SET sms_sent = 1 WHERE reminder_id = ?");
+    $count = 0;
+    foreach ($stmt->fetchAll() as $r) {
+        $prefs = get_notification_preferences($pdo, (int) $r['user_id']);
+        if (!$prefs['sms_enabled']) {
+            continue;
+        }
+        if (send_sms($r['phone_number'], build_reminder_message($r))) {
+            $markSms->execute([$r['reminder_id']]);
+            $count++;
+        }
+    }
+    return $count;
 }
