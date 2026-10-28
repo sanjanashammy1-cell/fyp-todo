@@ -1,10 +1,8 @@
 <?php
 // =========================================================
 // quotes.php
-// Short original encouragement lines shown after a student
-// completes a task. Written specifically for this project —
-// not quotes from named people — so there's no attribution
-// or copyright question.
+// Short original encouragement lines shown after completing
+// a task. Written for this project, not quoted from anyone.
 // =========================================================
 
 function get_encouragement(): string {

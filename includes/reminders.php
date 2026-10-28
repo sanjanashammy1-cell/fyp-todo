@@ -2,24 +2,61 @@
 // =========================================================
 // reminders.php
 // Schedules reminders when a task is created, and fetches
-// reminders that are due to be shown right now — both as an
-// in-app banner and, if the student saved a phone number, as
-// a real SMS via Twilio (sms.php).
+// reminders due to be shown right now — as an in-app banner
+// and, if the student has SMS enabled, as a real text via
+// Twilio (sms.php).
+//
+// UPDATED: reminder timing and whether SMS is sent at all
+// now come from notification_preferences, not fixed values,
+// so each student can control their own reminder schedule.
 // =========================================================
 
 require_once __DIR__ . '/sms.php';
 
+const DEFAULT_PREFS = [
+    'sms_enabled' => true,
+    'first_reminder_days' => 7,
+    'second_reminder_days' => 1,
+];
+
+function get_notification_preferences(PDO $pdo, int $user_id): array {
+    $stmt = $pdo->prepare("SELECT sms_enabled, first_reminder_days, second_reminder_days FROM notification_preferences WHERE user_id = ?");
+    $stmt->execute([$user_id]);
+    $row = $stmt->fetch();
+
+    if (!$row) {
+        return DEFAULT_PREFS;
+    }
+    return [
+        'sms_enabled' => (bool) $row['sms_enabled'],
+        'first_reminder_days' => (int) $row['first_reminder_days'],
+        'second_reminder_days' => (int) $row['second_reminder_days'],
+    ];
+}
+
+function save_notification_preferences(PDO $pdo, int $user_id, bool $sms_enabled, int $first_days, int $second_days): void {
+    $stmt = $pdo->prepare(
+        "INSERT INTO notification_preferences (user_id, sms_enabled, first_reminder_days, second_reminder_days)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE sms_enabled = VALUES(sms_enabled),
+             first_reminder_days = VALUES(first_reminder_days), second_reminder_days = VALUES(second_reminder_days)"
+    );
+    $stmt->execute([$user_id, $sms_enabled ? 1 : 0, $first_days, $second_days]);
+}
+
 /**
- * Creates two reminders for a task: one a week before it's due,
- * one the day before. Skips any reminder time already in the past.
+ * Creates two reminders for a task, timed according to this
+ * student's own preferences (defaulting to 7 days and 1 day
+ * before the deadline). Skips any reminder time already past.
  */
-function schedule_reminders(PDO $pdo, int $task_id, string $due_date): void {
+function schedule_reminders(PDO $pdo, int $task_id, string $due_date, int $user_id): void {
+    $prefs = get_notification_preferences($pdo, $user_id);
     $due = new DateTime($due_date);
     $now = new DateTime();
 
     $candidates = [
-        (clone $due)->modify('-7 days')->setTime(9, 0),
-        (clone $due)->modify('-1 day')->setTime(9, 0),
+        (clone $due)->modify("-{$prefs['first_reminder_days']} days")->setTime(9, 0),
+        (clone $due)->modify("-{$prefs['second_reminder_days']} days")->setTime(9, 0),
     ];
 
     $insert = $pdo->prepare("INSERT INTO reminders (task_id, remind_at) VALUES (?, ?)");
@@ -32,8 +69,9 @@ function schedule_reminders(PDO $pdo, int $task_id, string $due_date): void {
 
 /**
  * Finds reminders whose time has come, for this student's tasks,
- * that haven't been shown in-app yet. Marks them shown, and — if
- * the student has a phone number saved — also attempts an SMS.
+ * not yet shown in-app. Marks them shown, and — only if the
+ * student has SMS enabled and saved a phone number — attempts
+ * an SMS too.
  */
 function get_due_reminders(PDO $pdo, int $user_id): array {
     $stmt = $pdo->prepare(
@@ -50,7 +88,8 @@ function get_due_reminders(PDO $pdo, int $user_id): array {
         return [];
     }
 
-    // Look up the student's phone number once, not per-reminder.
+    $prefs = get_notification_preferences($pdo, $user_id);
+
     $userStmt = $pdo->prepare("SELECT phone_number FROM users WHERE user_id = ?");
     $userStmt->execute([$user_id]);
     $phone = $userStmt->fetchColumn();
@@ -61,7 +100,7 @@ function get_due_reminders(PDO $pdo, int $user_id): array {
     foreach ($due as $r) {
         $markShown->execute([$r['reminder_id']]);
 
-        if (!empty($phone)) {
+        if ($prefs['sms_enabled'] && !empty($phone)) {
             $sent = send_sms($phone, build_reminder_message($r));
             if ($sent) {
                 $markSms->execute([$r['reminder_id']]);

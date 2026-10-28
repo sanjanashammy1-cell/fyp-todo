@@ -1,13 +1,8 @@
 <?php
-// =========================================================
-// config.php
-// One shared database connection, used by every page.
-// =========================================================
-
 $DB_HOST = "localhost";
 $DB_NAME = "todolist";
 $DB_USER = "root";
-$DB_PASS = "";   // default XAMPP has no password
+$DB_PASS = "";
 
 try {
     $pdo = new PDO(
