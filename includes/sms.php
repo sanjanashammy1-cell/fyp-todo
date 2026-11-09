@@ -6,7 +6,7 @@
 // has to stay switched on (TextBee and SMSMobileAPI needed one).
 //
 // The real keys are only on the server. The copy on GitHub and in
-// the submission ZIP has PASTE-... placeholders instead (NFR3).
+// the submission ZIP has PASTE-... placeholders instead (NFR2).
 // =========================================================
 
 const TWILIO_ACCOUNT_SID = "PASTE-YOUR-TWILIO-ACCOUNT-SID-HERE";

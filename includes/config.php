@@ -7,7 +7,7 @@ $DB_USER = "root";
 $DB_PASS = "";
 
 // PDO is used for every database query because it supports
-// prepared statements, which protect against SQL injection (NFR3).
+// prepared statements, which protect against SQL injection (NFR2).
 try {
     $pdo = new PDO(
         "mysql:host=$DB_HOST;dbname=$DB_NAME;charset=utf8mb4",

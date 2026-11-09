@@ -1,7 +1,7 @@
 <?php
 // =========================================================
 // clustering.php
-// Deadline-clash warning (FR8, need N7).
+// Deadline-clash warning (FR12, needs N2 and N8).
 // Warns the student when two heavy tasks (worth 20% or more)
 // are due within 3 days of each other, because overlapping
 // deadlines were the main source of stress in the survey.
