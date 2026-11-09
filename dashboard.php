@@ -27,7 +27,7 @@ $weights = get_user_weights($pdo, $user_id);
 // Score and rank every active task (recommender.php). This runs fresh on
 // every page load, so the ranking always uses today's date.
 $ranked = rank_tasks($tasks, $weights);
-// The three highest-scoring tasks are shown in "Today's Focus".
+// The three highest-scoring tasks are shown in "Today's Focus" (FR8).
 $top3 = array_slice($ranked, 0, 3);
 
 // Log the top pick to build a real historical record (Chapter 6 evidence)
@@ -37,7 +37,7 @@ if (!empty($ranked)) {
 
 // Show due reminders as a banner and send SMS if switched on (FR10, FR11).
 $due_reminders = get_due_reminders($pdo, $user_id);
-// Warn if two heavy deadlines are close together (FR8).
+// Warn if two heavy deadlines are close together (FR12).
 $cluster_warning = detect_deadline_cluster($tasks);
 
 $just_completed = isset($_GET['completed']);

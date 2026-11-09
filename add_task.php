@@ -28,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Progress must be between 0 and 100.";
     } else {
         // Prepared statement: the values are sent separately from the SQL,
-        // so user input cannot change the query (security test S1).
+        // so user input cannot change the query (security test S2).
         $stmt = $pdo->prepare(
             "INSERT INTO tasks (user_id, title, module_name, due_date, assessment_weight, estimated_hours, progress_percent)
              VALUES (?, ?, ?, ?, ?, ?, ?)"
