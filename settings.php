@@ -20,6 +20,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $form = $_POST['form'] ?? '';
 
     // Delete account: the user must type their password to confirm.
+    // FR19: delete account. Asking for the password again stops someone
+    // else deleting the account from a computer left logged in.
     if ($form === 'delete_account') {
         $confirm_password = $_POST['confirm_password'] ?? '';
         $stmt = $pdo->prepare("SELECT password_hash FROM users WHERE user_id = ?");
@@ -27,6 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $row = $stmt->fetch();
 
         if ($row && password_verify($confirm_password, $row['password_hash'])) {
+            // A transaction makes the two deletes happen together or not at all.
             $pdo->beginTransaction();
             // chat_messages has no foreign key, so delete it first by hand.
             $pdo->prepare("DELETE FROM chat_messages WHERE user_id = ?")->execute([$user_id]);
@@ -50,6 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $user['phone_number'] = $phone;
     }
 
+    // FR10, FR11: the student's own reminder timing and SMS on or off.
     if ($form === 'notifications') {
         $sms_enabled = isset($_POST['sms_enabled']);
         $first_days = (int) ($_POST['first_reminder_days'] ?? 7);
@@ -59,6 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $prefs = get_notification_preferences($pdo, $user_id);
     }
 
+    // FR9: the student can change the recommender weights to match their own strategy.
     if ($form === 'weights') {
         $w = [
             'urgency' => (int) ($_POST['w_urgency'] ?? 40),
@@ -67,6 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'progress' => (int) ($_POST['w_progress'] ?? 15),
         ];
         $sum = array_sum($w);
+        // The four weights are percentages, so they must add up to exactly 100.
         if ($sum !== 100) {
             $error = "Weights must add up to 100% (currently {$sum}%).";
         } else {

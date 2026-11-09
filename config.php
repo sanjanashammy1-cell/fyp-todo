@@ -1,0 +1,72 @@
+<?php
+// config.php - Gemini settings. The real key is only on the server; this copy has a placeholder.
+define('GEMINI_API_KEY', 'PASTE-YOUR-GEMINI-API-KEY-HERE');
+define('GEMINI_MODEL', 'gemini-3.5-flash-lite');
+
+// Sends one request to Google Gemini and returns the answer text.
+// The API key is sent in a header from the server, never from the browser.
+function callGemini(string $systemInstruction, string $input): string {
+    // Official Gemini REST format (ai.google.dev/api):
+    // POST /v1beta/models/{model}:generateContent
+    $payload = [
+        'contents' => [
+            [
+                'role' => 'user',
+                'parts' => [ ['text' => $input] ],
+            ],
+        ],
+        'systemInstruction' => [
+            'parts' => [ ['text' => $systemInstruction] ],
+        ],
+    ];
+
+    $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . GEMINI_MODEL . ':generateContent';
+
+    // The free tier occasionally returns 503 (model temporarily overloaded).
+    // This is transient, not a bug, so we retry once after a short pause
+    // before giving up — this matters specifically for a live demo/viva,
+    // where a single retry can be the difference between a visible failure
+    // and the assistant working as expected.
+    $maxAttempts = 2;
+    $lastError = null;
+
+    for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_HTTPHEADER => [
+                'Content-Type: application/json',
+                'x-goog-api-key: ' . GEMINI_API_KEY,
+            ],
+            CURLOPT_POSTFIELDS => json_encode($payload), // PHP array -> JSON
+        ]);
+
+        $response = curl_exec($ch);
+        if ($response === false) {
+            $lastError = new Exception('Connection error: ' . curl_error($ch));
+            curl_close($ch);
+        } else {
+            $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            $data = json_decode($response, true);
+
+            if ($status === 200) {
+                $text = $data['candidates'][0]['content']['parts'][0]['text'] ?? null;
+                if ($text !== null) {
+                    return $text;
+                }
+                $lastError = new Exception('No text found in the AI response.');
+            } elseif ($status === 503 && $attempt < $maxAttempts) {
+                // Model temporarily overloaded — wait briefly, then retry once.
+                usleep(1200000); // 1.2 seconds
+                continue;
+            } else {
+                $lastError = new Exception('API error ' . $status . ': ' . ($data['error']['message'] ?? $response));
+            }
+        }
+    }
+
+    throw $lastError;
+}

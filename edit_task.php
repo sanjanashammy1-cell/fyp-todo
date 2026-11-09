@@ -6,10 +6,12 @@ require_login();
 $user_id = current_user_id();
 $task_id = $_GET['id'] ?? $_POST['task_id'] ?? null;
 
+// Load the task only if it belongs to this student (user_id check).
 $stmt = $pdo->prepare("SELECT * FROM tasks WHERE task_id = ? AND user_id = ?");
 $stmt->execute([$task_id, $user_id]);
 $task = $stmt->fetch();
 
+// Someone else's task or a wrong id: go back to the dashboard.
 if (!$task) {
     header("Location: dashboard.php");
     exit;
@@ -34,6 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($progress_percent < 0 || $progress_percent > 100) {
         $error = "Progress must be between 0 and 100.";
     } else {
+        // Update only this student's task (WHERE task_id AND user_id).
         $update = $pdo->prepare(
             "UPDATE tasks SET title=?, module_name=?, due_date=?, assessment_weight=?, estimated_hours=?, progress_percent=?
              WHERE task_id = ? AND user_id = ?"

@@ -9,6 +9,7 @@ require_login();
 
 $user_id = current_user_id();
 
+// Load this student's active tasks (only their own, by user_id).
 $stmt = $pdo->prepare(
     "SELECT * FROM tasks WHERE user_id = ? AND status = 'active' ORDER BY due_date ASC"
 );
@@ -23,7 +24,10 @@ $completed = $stmt2->fetchAll();
 
 // --- Recommender: this user's own weight profile, scored fresh every load ---
 $weights = get_user_weights($pdo, $user_id);
+// Score and rank every active task (recommender.php). This runs fresh on
+// every page load, so the ranking always uses today's date.
 $ranked = rank_tasks($tasks, $weights);
+// The three highest-scoring tasks are shown in "Today's Focus".
 $top3 = array_slice($ranked, 0, 3);
 
 // Log the top pick to build a real historical record (Chapter 6 evidence)
@@ -31,7 +35,9 @@ if (!empty($ranked)) {
     log_recommendation($pdo, $user_id, $ranked[0]);
 }
 
+// Show due reminders as a banner and send SMS if switched on (FR10, FR11).
 $due_reminders = get_due_reminders($pdo, $user_id);
+// Warn if two heavy deadlines are close together (FR8).
 $cluster_warning = detect_deadline_cluster($tasks);
 
 $just_completed = isset($_GET['completed']);
@@ -72,10 +78,12 @@ if ($sort_by === 'due_date') {
 // 'score' needs no re-sort — $ranked is already score-ordered.
 
 
+// Data for the consistency chart and streak (FR16).
 $week = get_weekly_consistency($pdo, $user_id);
 $streak = get_current_streak($week);
 $max_count = max(1, max(array_column($week, 'count')));
 
+// Count tasks by importance for the donut chart (a CSS conic-gradient).
 $priority_counts = ['High' => 0, 'Medium' => 0, 'Low' => 0];
 foreach ($tasks as $t) {
     $priority_counts[importance_tag((int) $t['assessment_weight'])]++;

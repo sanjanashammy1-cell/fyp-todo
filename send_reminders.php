@@ -12,6 +12,8 @@
 require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/reminders.php';
 
+// Allow it from the command line (Task Scheduler) or with the secret key.
+// hash_equals() compares the key safely (it takes the same time for any input).
 $from_command_line = (php_sapi_name() === 'cli');
 if (!$from_command_line && !hash_equals(CRON_SECRET, (string) ($_GET['key'] ?? ''))) {
     http_response_code(403);

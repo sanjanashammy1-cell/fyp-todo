@@ -10,17 +10,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['password'] ?? '';
     $phone = trim($_POST['phone_number'] ?? '');
 
+    // Check the required fields and a minimum password length.
     if ($name === '' || $email === '' || $password === '') {
         $error = "Please fill in every required field.";
     } elseif (strlen($password) < 6) {
         $error = "Password must be at least 6 characters.";
     } else {
+        // Stop two accounts using the same email.
         $stmt = $pdo->prepare("SELECT user_id FROM users WHERE email = ?");
         $stmt->execute([$email]);
 
         if ($stmt->fetch()) {
             $error = "That email is already registered. Try logging in instead.";
         } else {
+            // Store only a salted hash of the password (bcrypt), never the password itself.
             $hash = password_hash($password, PASSWORD_DEFAULT);
             $insert = $pdo->prepare(
                 "INSERT INTO users (name, email, password_hash, phone_number) VALUES (?, ?, ?, ?)"
@@ -28,6 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $insert->execute([$name, $email, $hash, $phone ?: null]);
             $new_id = (int) $pdo->lastInsertId();
 
+            // Log the new student in straight away.
             $_SESSION['user_id'] = $new_id;
             $_SESSION['user_name'] = $name;
             log_activity($pdo, $new_id, 'register', "Account created");

@@ -2,6 +2,8 @@
 // study_help.php - AI study assistant endpoint (same as ai_chat.php, renamed for online hosting)
 require_once __DIR__ . '/includes/auth.php'; // database ($pdo), session, current_user_id()
 require_once __DIR__ . '/config.php';        // Gemini API key + callGemini()
+// The browser sends the question with fetch() and gets JSON back,
+// so the page does not reload (includes/chat_widget.php).
 header('Content-Type: application/json');
 
 function sendJson(int $code, array $body): void {
@@ -71,6 +73,8 @@ foreach ($history as $row) {
 }
 
 // 5. Build the prompt: fixed rules (system instruction) + task data + question
+// The rules keep the assistant guiding, not doing the work for the student
+// (Bastani et al., 2025), and stop it from changing the app's ranking.
 $system = <<<TXT
 You are a study planning assistant inside a ClariTask app for university students.
 Rules:

@@ -8,10 +8,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
 
+    // Find the account by email with a prepared statement.
     $stmt = $pdo->prepare("SELECT user_id, name, password_hash FROM users WHERE email = ?");
     $stmt->execute([$email]);
     $user = $stmt->fetch();
 
+    // password_verify() compares the typed password with the stored hash.
+    // The real password is never stored (security test S3).
     if ($user && password_verify($password, $user['password_hash'])) {
         $_SESSION['user_id'] = $user['user_id'];
         $_SESSION['user_name'] = $user['name'];
@@ -19,6 +22,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: dashboard.php");
         exit;
     } else {
+        // Same message for a wrong email or a wrong password, so an attacker
+        // cannot find out which emails are registered.
         $error = "Incorrect email or password.";
     }
 }
