@@ -1,22 +1,29 @@
 <?php
 // =========================================================
 // recommender.php
-// The explainable, multi-factor priority recommendation
-// algorithm (project contract, Section 3.5 / Objective 5).
+// The explainable, multi-factor priority recommender (FR6, FR7, FR9).
 //
-// UPDATED: weights are no longer fixed constants. Each user
-// has their own weight profile (recommender_weights table),
-// defaulting to 40/30/15/15 if they haven't customised it.
-// This makes the algorithm's tuning explicit and testable —
-// a student can change their own weighting and immediately
-// see how recommendations shift (useful for Chapter 6's
-// sensitivity-analysis testing).
+// Why rule-based and not machine learning?
+//   A model would need behaviour data that the project did not have,
+//   and its decisions would be hard to explain. A weighted sum can be
+//   checked by hand and explained in plain words (Section 6.2).
 //
-// Every time the top recommendation is calculated for a
-// dashboard view, it is also logged to priority_explanations,
-// building a real historical record of the system's decisions.
+// How it works:
+//   1. Each active task gets four factor scores between 0 and 1:
+//      urgency, grade weight, workload and progress gap.
+//   2. Each factor is multiplied by the student's own weight
+//      (default 40/30/15/15) and the results are added up.
+//   3. Tasks are sorted from highest to lowest score.
+//   4. explain_task() turns the same numbers into a short reason.
+//
+// This file never reads the tasks table itself. It receives task
+// arrays and returns them ranked, so it can be unit tested with
+// fixed arrays (tests/run_tests.php, Section 4.5.2).
 // =========================================================
 
+// Default weights in percent. Urgency counts most because a missed
+// deadline cannot be fixed later; grade weight comes next because it
+// decides how much a task affects the final mark. They add up to 100.
 const DEFAULT_WEIGHTS = [
     'urgency'  => 40,
     'weight'   => 30,
@@ -61,13 +68,21 @@ function save_user_weights(PDO $pdo, int $user_id, array $weights): void {
 function score_task(array $task, array $weights): array {
     $due = new DateTime($task['due_date']);
     $today = new DateTime('today');
+    // Days until the deadline. %r keeps the minus sign for overdue tasks.
     $days_remaining = (int) $today->diff($due)->format('%r%a');
 
+    // Urgency: 1 when due today, falling to 0 at 14 days or more.
+    // max/min keep the value between 0 and 1 (overdue tasks stay at 1).
     $urgency = max(0.0, min(1.0, 1 - ($days_remaining / 14)));
+    // Grade weight: a task worth 40% of the module gets 0.40.
     $weight_score = min(1.0, ((int) $task['assessment_weight']) / 100);
+    // Workload: hours divided by 10, capped at 1, so 10+ hours counts as the maximum.
     $workload_score = min(1.0, ((float) $task['estimated_hours']) / 10);
+    // Progress gap: how much is still left to do. 20% done gives 0.80.
     $progress_gap = (100 - (int) $task['progress_percent']) / 100;
 
+    // Weighted sum. Each factor is multiplied by the student's weight.
+    // Example (Section 4.4.1): 0.40*0.857 + 0.30*0.40 + 0.15*0.80 + 0.15*0.80 = 0.70.
     $total = ($urgency * $weights['urgency'] / 100)
            + ($weight_score * $weights['weight'] / 100)
            + ($workload_score * $weights['workload'] / 100)
@@ -83,6 +98,9 @@ function score_task(array $task, array $weights): array {
     ];
 }
 
+// Builds the plain-language explanation shown under each recommendation.
+// It only names reasons that are really true for this task, so the
+// explanation always matches the score (Tintarev and Masthoff, 2007).
 function explain_task(array $task, array $scores): string {
     $reasons = [];
 
@@ -104,10 +122,12 @@ function explain_task(array $task, array $scores): string {
         $reasons[] = "it still needs about {$task['estimated_hours']} hours of work";
     }
 
+    // No single strong reason: fall back to a general message.
     if (empty($reasons)) {
         return "Recommended based on its overall priority score compared to your other tasks.";
     }
 
+    // Join the reasons into one natural sentence: "a, b, and c".
     $last = array_pop($reasons);
     $text = empty($reasons) ? $last : implode(', ', $reasons) . ', and ' . $last;
     return "Recommended because " . $text . ".";
@@ -129,6 +149,7 @@ function rank_tasks(array $tasks, array $weights): array {
             'explanation' => explain_task($task, $scores),
         ];
     }
+    // Sort from highest to lowest total score. <=> compares two numbers.
     usort($ranked, fn($a, $b) => $b['scores']['total'] <=> $a['scores']['total']);
     return $ranked;
 }

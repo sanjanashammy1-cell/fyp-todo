@@ -1,11 +1,9 @@
 <?php
 // =========================================================
 // activity_log.php
-// Records key user actions with a timestamp. This is a
-// standard audit-trail pattern, and the recorded timestamps
-// also strengthen the consistency evaluation in Chapter 6 —
-// e.g. showing exactly when tasks were added vs completed,
-// not just the daily counts already shown on the dashboard.
+// Saves key actions (register, login, task added, edited,
+// completed) with a time stamp in activity_logs (FR17).
+// This gives a traceable record that test T18 checks.
 // =========================================================
 
 function log_activity(PDO $pdo, int $user_id, string $action, ?string $details = null): void {

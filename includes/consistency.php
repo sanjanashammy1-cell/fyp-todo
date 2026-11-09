@@ -5,6 +5,8 @@
 // per day for the last 7 days, plus the current streak.
 // =========================================================
 
+// Counts completed tasks for each of the last 7 days (FR16, need N4).
+// Progress feedback helps students feel in control (Macan et al., 1990).
 function get_weekly_consistency(PDO $pdo, int $user_id): array {
     $today = new DateTime('today');
     $start = (clone $today)->modify('-6 days');
@@ -16,9 +18,11 @@ function get_weekly_consistency(PDO $pdo, int $user_id): array {
          GROUP BY DATE(completed_at)"
     );
     $stmt->execute([$user_id, $start->format('Y-m-d 00:00:00')]);
+    // FETCH_KEY_PAIR gives an array like ['2026-10-08' => 2].
     $rows = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
 
     $days = [];
+    // Fill in all 7 days, using 0 for days with no completed task.
     for ($i = 0; $i < 7; $i++) {
         $d = (clone $start)->modify("+$i days");
         $key = $d->format('Y-m-d');
@@ -31,6 +35,7 @@ function get_weekly_consistency(PDO $pdo, int $user_id): array {
     return $days;
 }
 
+// Streak = how many days in a row, ending today, had at least one completed task.
 function get_current_streak(array $days): int {
     $streak = 0;
     for ($i = count($days) - 1; $i >= 0; $i--) {
